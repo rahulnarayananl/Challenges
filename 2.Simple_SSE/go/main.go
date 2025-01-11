@@ -15,7 +15,11 @@ func main() {
 func handler(w http.ResponseWriter, r *http.Request) {
 	list := []string{"this", "is", "data", "to", "stream"}
 	w.Header().Add("Content-Type", "text/event-stream")
+
+	fmt.Fprintf(w, "retry: 5000\n\n")
+
 	for i := 0; i < len(list); i += 1 {
+		fmt.Fprintf(w, "id: %d\n", i)
 		fmt.Fprintf(w, "data: %s\n\n", list[i])
 		w.(http.Flusher).Flush()
 		time.Sleep(2 * time.Second)
