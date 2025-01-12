@@ -3,3 +3,5 @@
 
 1. Simple Http Server
 2. Simple Server Side Events
+3. Simple TCP Stack
+4. Word Count (wc)
