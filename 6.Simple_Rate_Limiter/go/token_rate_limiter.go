@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"sync"
 	"time"
+
+	"6.Simple_Rate_Limiter/util"
 )
 
 type TokenBucket struct {
@@ -11,27 +15,6 @@ type TokenBucket struct {
 	tokens         int
 	lastRefillTime time.Time
 	refillRate     int
-	mu             sync.Mutex
-}
-
-func (tb *TokenBucket) AllowRequest() bool {
-	tb.mu.Lock()
-	defer tb.mu.Unlock()
-
-	now := time.Now()
-	elapsed := now.Sub(tb.lastRefillTime).Seconds()
-	refillTokens := int(elapsed) * tb.refillRate
-
-	if refillTokens > 0 {
-		tb.tokens = min(tb.capacity, tb.tokens+refillTokens)
-		tb.lastRefillTime = now
-	}
-
-	if tb.tokens > 0 {
-		tb.tokens--
-		return true
-	}
-	return false
 }
 
 type TokenRateLimiter struct {
@@ -55,6 +38,7 @@ func (rl *TokenRateLimiter) GetBucket(ip string) *TokenBucket {
 		refillRate:     1,
 	}
 	rl.buckets[ip] = bucket
+	log.Println("Get Bucket")
 	return bucket
 }
 
@@ -64,7 +48,6 @@ func (rl *TokenRateLimiter) CleanupExpiredBuckets() {
 
 		rl.mu.Lock()
 		for ip, bucket := range rl.buckets {
-			// Cleanup logic: Remove buckets that have not been accessed for a while (e.g., 1 minute)
 			if time.Since(bucket.lastRefillTime) > 1*time.Minute {
 				fmt.Printf("Cleaning up expired bucket for IP: %s\n", ip)
 				delete(rl.buckets, ip)
@@ -74,9 +57,28 @@ func (rl *TokenRateLimiter) CleanupExpiredBuckets() {
 	}
 }
 
-func NewTokenBucketRateLimiter() *TokenRateLimiter {
-	return &TokenRateLimiter{
-		buckets:         make(map[string]*TokenBucket),
-		cleanupInterval: 10 * time.Second,
+func (rl *TokenRateLimiter) TokenBucketMiddleware(next http.Handler) http.HandlerFunc {
+	go rl.CleanupExpiredBuckets()
+	return func(w http.ResponseWriter, r *http.Request) {
+		ip := util.ReadUserIP(r)
+		bucket := rl.GetBucket(ip)
+
+		rl.mu.Lock()
+		now := time.Now()
+		elapsed := now.Sub(bucket.lastRefillTime).Seconds()
+		bucket.tokens += int(elapsed) * bucket.refillRate
+		if bucket.tokens > bucket.capacity {
+			bucket.tokens = bucket.capacity
+		}
+		bucket.lastRefillTime = now
+
+		if bucket.tokens > 0 {
+			bucket.tokens--
+			rl.mu.Unlock()
+			next.ServeHTTP(w, r)
+		} else {
+			rl.mu.Unlock()
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+		}
 	}
 }

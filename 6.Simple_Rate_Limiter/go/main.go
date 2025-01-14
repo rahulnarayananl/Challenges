@@ -1,40 +1,42 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
-	"6.Simple_Rate_Limiter/util"
+	"github.com/spf13/cobra"
 )
 
-type RateLimiter interface {
-	GetBucket(string) *TokenBucket
-	CleanupExpiredBuckets()
-}
-
-var (
-	algorithm = flag.String("b", "tokenbucket", "Rate limiting algorithm")
-)
-
-var rateLimiter RateLimiter
+var algorithm string
 
 func main() {
-	if *algorithm == "tokenbucket" {
-		rateLimiter = NewTokenBucketRateLimiter()
-		go rateLimiter.CleanupExpiredBuckets()
+	var rootCmd = &cobra.Command{
+		Use:   "rate_limiter",
+		Short: "Rate Limiter Server",
+		Run: func(cmd *cobra.Command, args []string) {
+			startServer()
+		},
+	}
 
-		fmt.Println("Server started")
+	rootCmd.Flags().StringVarP(&algorithm, "algorithm", "a", "tokenbucket", "Rate limiting algorithm (tokenbucket or leakybucket)")
 
-		http.HandleFunc("/unlimited", Unlimited)
-		http.HandleFunc("/limited", Limited)
-		err := http.ListenAndServe(":8080", nil)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func startServer() {
+	if algorithm != "" {
+		fmt.Printf("Server started with %s algorithm", algorithm)
+		err := http.ListenAndServe(":8080", Route(algorithm))
 		if err != nil {
 			log.Fatal(err)
 		}
 	} else {
-		fmt.Println("Nope bye")
+		fmt.Println("Invalid algorithm specified")
 	}
 }
 
@@ -43,12 +45,5 @@ func Unlimited(w http.ResponseWriter, r *http.Request) {
 }
 
 func Limited(w http.ResponseWriter, r *http.Request) {
-	ip := util.ReadUserIP(r)
-	tb := rateLimiter.GetBucket(ip)
-	if tb.AllowRequest() {
-		fmt.Fprintf(w, "Cosmos Allows you ! \n")
-	} else {
-		// w.WriteHeader(http.StatusTooManyRequests)
-		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
-	}
+	fmt.Fprintf(w, "Cosmos Allows you ! \n")
 }
