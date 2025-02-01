@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Demo</title>
+    <script>
+        let socket;
+
+        function connect() {
+            // Open a WebSocket connection to the backend
+            socket = new WebSocket("ws://localhost:8080/ws");
+
+            socket.onopen = function() {
+                console.log("Connected to WebSocket server");
+            };
+
+            socket.onmessage = function(event) {
+                console.log("Received from server: " + event.data);
+                document.getElementById("messages").innerText += "Server: " + event.data + "\n";
+            };
+
+            socket.onerror = function(error) {
+                console.error("WebSocket Error:", error);
+            };
+
+            socket.onclose = function() {
+                console.log("Disconnected from WebSocket server");
+            };
+        }
+
+        function sendMessage() {
+            const message = document.getElementById("messageInput").value;
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(message);
+                document.getElementById("messages").innerText += "You: " + message + "\n";
+                document.getElementById("messageInput").value = "";
+            }
+        }
+
+        window.onload = function() {
+            connect();
+        };
+    </script>
+</head>
+<body>
+    <h2>WebSocket Communication</h2>
+    <div>
+        <label for="messageInput">Message: </label>
+        <input type="text" id="messageInput">
+        <button onclick="sendMessage()">Send Message</button>
+    </div>
+    <div>
+        <h3>Messages:</h3>
+        <pre id="messages"></pre>
+    </div>
+</body>
+</html>
